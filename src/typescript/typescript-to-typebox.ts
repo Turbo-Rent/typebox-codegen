@@ -310,9 +310,7 @@ export namespace TypeScriptToTypeBox {
     const enumName = node.name.getText()
     enumNames.add(enumName)
     const enumType = `${exports}enum Enum${node.name.getText()} { ${members} }`
-    const staticType = `${exports}type ${node.name.getText()} = Static<typeof ${node.name.getText()}>`
-    const type = `${exports}const ${node.name.getText()} = Type.Enum(Enum${node.name.getText()})`
-    yield [enumType, '', staticType, type].join('\n')
+    yield [enumType, ''].join('\n')
   }
   function PropertiesFromTypeElementArray(members: Ts.NodeArray<Ts.TypeElement>): string {
     const properties = members.filter((member) => !Ts.isIndexSignatureDeclaration(member))
@@ -376,7 +374,6 @@ export namespace TypeScriptToTypeBox {
       const type_0 = Collect(node.type)
       const type_1 = isRecursiveType ? `Type.Recursive(This => ${type_0})` : type_0
       const type_2 = InjectOptions(type_1, options)
-      const names = node.typeParameters.map((param) => Collect(param)).join(', ')
       const typeDeclaration = `${exports}const ${node.name.getText()} = <${constraints}>(${parameters}) => ${type_2}`
       yield `\n${typeDeclaration}`
     } else {
@@ -398,9 +395,15 @@ export namespace TypeScriptToTypeBox {
     yield types.join(', ')
   }
   function* QualifiedName(node: Ts.QualifiedName): IterableIterator<string> {
-    const left = Collect(node.left)
-    const right = node.right.getText()
-    yield `${left}.${right}`
+    const leftText = node.left.getText()
+    const rightText = node.right.getText()
+    if (enumNames.has(leftText)) {
+      // If the left part is an enum, generate Type.Literal(EnumXXX.YYY)
+      yield `Type.Literal(Enum${leftText}.${rightText})`
+    } else {
+      const left = Collect(node.left)
+      yield `${left}.${rightText}`
+    }
   }
   function* IndexedAccessType(node: Ts.IndexedAccessTypeNode): IterableIterator<string> {
     const obj = node.objectType.getText()
@@ -447,60 +450,67 @@ export namespace TypeScriptToTypeBox {
     return false
   }
   function* TypeReferenceNode(node: Ts.TypeReferenceNode): IterableIterator<string> {
-    const name = node.typeName.getText()
-    const args = node.typeArguments
-      ? `(${node.typeArguments
-      .map((typeArgNode) => {
-        // Check if the type argument is a TypeReferenceNode that references an enum member
-        if (Ts.isTypeReferenceNode(typeArgNode) && isEnumMemberTypeReferenceNode(typeArgNode)) {
-          const typeName = typeArgNode.typeName as Ts.QualifiedName
-          const enumName = typeName.left.getText()
-          const memberName = typeName.right.getText()
-          return `Type.Literal(Enum${enumName}.${memberName})`
-        } else {
-          return Collect(typeArgNode)
-        }
-      })
-      .join(', ')})`
-      : ''
-    // --------------------------------------------------------------
-    // Instance Types
-    // --------------------------------------------------------------
-    if (name === 'Date') return yield `Type.Date()`
-    if (name === 'Uint8Array') return yield `Type.Uint8Array()`
-    if (name === 'String') return yield `Type.String()`
-    if (name === 'Number') return yield `Type.Number()`
-    if (name === 'Boolean') return yield `Type.Boolean()`
-    if (name === 'Function') return yield `Type.Function([], Type.Unknown())`
-    // --------------------------------------------------------------
-    // Types
-    // --------------------------------------------------------------
-    if (name === 'Array') return yield `Type.Array${args}`
-    if (name === 'Record') return yield `Type.Record${args}`
-    if (name === 'Partial') return yield `Type.Partial${args}`
-    if (name === 'Required') return yield `Type.Required${args}`
-    if (name === 'Omit') return yield `Type.Omit${args}`
-    if (name === 'Pick') return yield `Type.Pick${args}`
-    if (name === 'Promise') return yield `Type.Promise${args}`
-    if (name === 'ReturnType') return yield `Type.ReturnType${args}`
-    if (name === 'InstanceType') return yield `Type.InstanceType${args}`
-    if (name === 'Parameters') return yield `Type.Parameters${args}`
-    if (name === 'AsyncIterableIterator') return yield `Type.AsyncIterator${args}`
-    if (name === 'IterableIterator') return yield `Type.Iterator${args}`
-    if (name === 'ConstructorParameters') return yield `Type.ConstructorParameters${args}`
-    if (name === 'Exclude') return yield `Type.Exclude${args}`
-    if (name === 'Extract') return yield `Type.Extract${args}`
-    if (name === 'Awaited') return yield `Type.Awaited${args}`
-    if (name === 'Uppercase') return yield `Type.Uppercase${args}`
-    if (name === 'Lowercase') return yield `Type.Lowercase${args}`
-    if (name === 'Capitalize') return yield `Type.Capitalize${args}`
-    if (name === 'Uncapitalize') return yield `Type.Uncapitalize${args}`
-    if (recursiveDeclaration !== null && FindRecursiveParent(recursiveDeclaration, node)) return yield `This`
-    if (FindTypeName(node.getSourceFile(), name) && args.length === 0 /** non-resolvable */) {
-      return yield `${name}${args}`
+    if (Ts.isQualifiedName(node.typeName)) {
+      const left = node.typeName.left.getText();
+      const right = node.typeName.right.getText();
+
+      if (enumNames.has(left)) {
+        yield `Type.Literal(Enum${left}.${right})`;
+        return;
+      } else {
+        const leftCollected = Collect(node.typeName.left);
+        yield `${leftCollected}.${right}`;
+        return;
+      }
     }
-    if (name in globalThis) return yield `Type.Never()`
-    return yield `${name}${args}`
+
+    const name = node.typeName.getText();
+    const args = node.typeArguments
+      ? `(${node.typeArguments.map((typeArgNode) => Collect(typeArgNode)).join(', ')})`
+      : '';
+
+    if (name === 'Date') return yield `Type.Date()`;
+    if (name === 'Uint8Array') return yield `Type.Uint8Array()`;
+    if (name === 'String') return yield `Type.String()`;
+    if (name === 'Number') return yield `Type.Number()`;
+    if (name === 'Boolean') return yield `Type.Boolean()`;
+    if (name === 'Function') return yield `Type.Function([], Type.Unknown())`;
+
+    if (name === 'Array') return yield `Type.Array${args}`;
+    if (name === 'Record') return yield `Type.Record${args}`;
+    if (name === 'Partial') return yield `Type.Partial${args}`;
+    if (name === 'Required') return yield `Type.Required${args}`;
+    if (name === 'Omit') return yield `Type.Omit${args}`;
+    if (name === 'Pick') return yield `Type.Pick${args}`;
+    if (name === 'Promise') return yield `Type.Promise${args}`;
+    if (name === 'ReturnType') return yield `Type.ReturnType${args}`;
+    if (name === 'InstanceType') return yield `Type.InstanceType${args}`;
+    if (name === 'Parameters') return yield `Type.Parameters${args}`;
+    if (name === 'ConstructorParameters') return yield `Type.ConstructorParameters${args}`;
+    if (name === 'Exclude') return yield `Type.Exclude${args}`;
+    if (name === 'Extract') return yield `Type.Extract${args}`;
+    if (name === 'Awaited') return yield `Type.Awaited${args}`;
+    if (name === 'Uppercase') return yield `Type.Uppercase${args}`;
+    if (name === 'Lowercase') return yield `Type.Lowercase${args}`;
+    if (name === 'Capitalize') return yield `Type.Capitalize${args}`;
+    if (name === 'Uncapitalize') return yield `Type.Uncapitalize${args}`;
+
+    if (enumNames.has(name)) {
+      yield `Type.Enum(Enum${name})`;
+      return;
+    }
+
+    if (recursiveDeclaration !== null && FindRecursiveParent(recursiveDeclaration, node)) {
+      return yield `This`;
+    }
+
+    if (FindTypeName(node.getSourceFile(), name)) {
+      return yield `${name}${args}`;
+    }
+
+    if (name in globalThis) return yield `Type.Never()`;
+
+    yield `${name}${args}`;
   }
   function* LiteralTypeNode(node: Ts.LiteralTypeNode): IterableIterator<string> {
     const text = node.getText()
