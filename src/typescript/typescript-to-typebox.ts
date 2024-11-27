@@ -236,9 +236,9 @@ export namespace TypeScriptToTypeBox {
     return yield (
       (readonly && optional) ? (
         (readonly_subtractive && optional_subtractive) ? `Type.Mapped(${C}, ${K} => Type.Readonly(Type.Optional(${T}, false), false))` :
-        (readonly_subtractive) ? `Type.Mapped(${C}, ${K} => Type.Readonly(Type.Optional(${T}), false))` :
-        (optional_subtractive) ? `Type.Mapped(${C}, ${K} => Type.Readonly(Type.Optional(${T}, false)))` :
-        `Type.Mapped(${C}, ${K} => Type.Readonly(Type.Optional(${T})))`
+          (readonly_subtractive) ? `Type.Mapped(${C}, ${K} => Type.Readonly(Type.Optional(${T}), false))` :
+            (optional_subtractive) ? `Type.Mapped(${C}, ${K} => Type.Readonly(Type.Optional(${T}, false)))` :
+              `Type.Mapped(${C}, ${K} => Type.Readonly(Type.Optional(${T})))`
       ) : (readonly) ? (
         readonly_subtractive
           ? `Type.Mapped(${C}, ${K} => Type.Readonly(${T}, false))`
@@ -402,6 +402,11 @@ export namespace TypeScriptToTypeBox {
     // interface definition.
     yield types.join(', ')
   }
+  function* QualifiedName(node: Ts.QualifiedName): IterableIterator<string> {
+    const left = Collect(node.left)
+    const right = node.right.getText()
+    yield `${left}.${right}`
+  }
   function* IndexedAccessType(node: Ts.IndexedAccessTypeNode): IterableIterator<string> {
     const obj = node.objectType.getText()
     const key = Collect(node.indexType)
@@ -438,22 +443,25 @@ export namespace TypeScriptToTypeBox {
     // for objects and record types.
     yield Collect(node.type)
   }
+  function isEnumMemberTypeReferenceNode(node: Ts.TypeReferenceNode): boolean {
+    const typeName = node.typeName
+    if (Ts.isQualifiedName(typeName)) {
+      const enumName = typeName.left.getText()
+      return enumNames.has(enumName)
+    }
+    return false
+  }
   function* TypeReferenceNode(node: Ts.TypeReferenceNode): IterableIterator<string> {
     const name = node.typeName.getText()
     const args = node.typeArguments
       ? `(${node.typeArguments
       .map((typeArgNode) => {
-        // Check if the type argument is:
-        // - A literal type node (e.g., string literal)
-        // - A property access expression (e.g., TABLE.Users)
-        // - A type reference to an enum (e.g., TABLE)
-        if (
-          Ts.isLiteralTypeNode(typeArgNode) ||
-          Ts.isPropertyAccessExpression(typeArgNode) ||
-          (Ts.isTypeReferenceNode(typeArgNode) && enumNames.has(typeArgNode.typeName.getText()))
-        ) {
-          const arg = Collect(typeArgNode)
-          return `Type.Literal(${arg})`
+        // Check if the type argument is a TypeReferenceNode that references an enum member
+        if (Ts.isTypeReferenceNode(typeArgNode) && isEnumMemberTypeReferenceNode(typeArgNode)) {
+          const typeName = typeArgNode.typeName as Ts.QualifiedName
+          const enumName = typeName.left.getText()
+          const memberName = typeName.right.getText()
+          return `Type.Literal(Enum${enumName}.${memberName})`
         } else {
           return Collect(typeArgNode)
         }
@@ -533,6 +541,7 @@ export namespace TypeScriptToTypeBox {
     if (Ts.isArrayTypeNode(node)) return yield* ArrayTypeNode(node)
     if (Ts.isBlock(node)) return yield* Block(node)
     if (Ts.isClassDeclaration(node)) return yield* ClassDeclaration(node)
+    if (Ts.isQualifiedName(node)) return yield* QualifiedName(node)
     if (Ts.isConditionalTypeNode(node)) return yield* ConditionalTypeNode(node)
     if (Ts.isConstructorTypeNode(node)) return yield* ConstructorTypeNode(node)
     if (Ts.isEnumDeclaration(node)) return yield* EnumDeclaration(node)
