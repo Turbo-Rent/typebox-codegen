@@ -598,7 +598,7 @@ export namespace TypeScriptToTypeBox {
   }
   function ImportStatement(): string {
     if (!(useImports && useTypeBoxImport)) return ''
-    const set = new Set<string>(['Type', 'Static'])
+    const set = new Set<string>(['Type'])
     if (useGenerics) {
       set.add('TSchema')
     }
