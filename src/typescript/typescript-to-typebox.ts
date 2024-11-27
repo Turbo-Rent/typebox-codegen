@@ -72,6 +72,7 @@ export namespace TypeScriptToTypeBox {
   // ------------------------------------------------------------------------------------------------------------
   // (auto) tracked on calls to find type name
   const typenames = new Set<string>()
+  const enumNames = new Set<string>()
   // (auto) tracked for recursive types and used to associate This type references
   let recursiveDeclaration: Ts.TypeAliasDeclaration | Ts.InterfaceDeclaration | null = null
   // (auto) tracked for scoped block level definitions and used to prevent `export` emit when not in global scope.
@@ -239,12 +240,12 @@ export namespace TypeScriptToTypeBox {
         (optional_subtractive) ? `Type.Mapped(${C}, ${K} => Type.Readonly(Type.Optional(${T}, false)))` :
         `Type.Mapped(${C}, ${K} => Type.Readonly(Type.Optional(${T})))`
       ) : (readonly) ? (
-        readonly_subtractive 
-          ? `Type.Mapped(${C}, ${K} => Type.Readonly(${T}, false))` 
+        readonly_subtractive
+          ? `Type.Mapped(${C}, ${K} => Type.Readonly(${T}, false))`
           : `Type.Mapped(${C}, ${K} => Type.Readonly(${T}))`
       ) : (optional) ? (
-        optional_subtractive 
-          ? `Type.Mapped(${C}, ${K} => Type.Optional(${T}, false))` 
+        optional_subtractive
+          ? `Type.Mapped(${C}, ${K} => Type.Optional(${T}, false))`
           : `Type.Mapped(${C}, ${K} => Type.Optional(${T}))`
       ) : `Type.Mapped(${C}, ${K} => ${T})`
     )
@@ -306,6 +307,8 @@ export namespace TypeScriptToTypeBox {
     useImports = true
     const exports = IsExport(node) ? 'export ' : ''
     const members = node.members.map((member) => member.getText()).join(', ')
+    const enumName = node.name.getText()
+    enumNames.add(enumName)
     const enumType = `${exports}enum Enum${node.name.getText()} { ${members} }`
     const staticType = `${exports}type ${node.name.getText()} = Static<typeof ${node.name.getText()}>`
     const type = `${exports}const ${node.name.getText()} = Type.Enum(Enum${node.name.getText()})`
@@ -437,7 +440,26 @@ export namespace TypeScriptToTypeBox {
   }
   function* TypeReferenceNode(node: Ts.TypeReferenceNode): IterableIterator<string> {
     const name = node.typeName.getText()
-    const args = node.typeArguments ? `(${node.typeArguments.map((type) => Collect(type)).join(', ')})` : ''
+    const args = node.typeArguments
+      ? `(${node.typeArguments
+      .map((typeArgNode) => {
+        // Check if the type argument is:
+        // - A literal type node (e.g., string literal)
+        // - A property access expression (e.g., TABLE.Users)
+        // - A type reference to an enum (e.g., TABLE)
+        if (
+          Ts.isLiteralTypeNode(typeArgNode) ||
+          Ts.isPropertyAccessExpression(typeArgNode) ||
+          (Ts.isTypeReferenceNode(typeArgNode) && enumNames.has(typeArgNode.typeName.getText()))
+        ) {
+          const arg = Collect(typeArgNode)
+          return `Type.Literal(${arg})`
+        } else {
+          return Collect(typeArgNode)
+        }
+      })
+      .join(', ')})`
+      : ''
     // --------------------------------------------------------------
     // Instance Types
     // --------------------------------------------------------------
