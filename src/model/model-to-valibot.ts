@@ -85,8 +85,8 @@ export namespace ModelToValibot {
   }
   function Literal(schema: Types.TLiteral) {
     // prettier-ignore
-    return typeof schema.const === `string` 
-      ? Type(`v.literal`, `'${schema.const}'`, []) 
+    return typeof schema.const === `string`
+      ? Type(`v.literal`, `'${schema.const}'`, [])
       : Type(`v.literal`, `${schema.const}`, [])
   }
   function Never(schema: Types.TNever) {
@@ -210,7 +210,6 @@ export namespace ModelToValibot {
     }
     const type = Collect(schema)
     if (recursive_set.has(schema.$id!)) {
-      output.push(`export ${ModelToTypeScript.GenerateType(model, schema.$id!)}`)
       output.push(`export const ${schema.$id || `T`}: v.InferOutput<${schema.$id}> = v.lazy(() => ${Formatter.Format(type)})`)
     } else {
       output.push(`export type ${schema.$id} = v.InferOutput<typeof ${schema.$id}>`)

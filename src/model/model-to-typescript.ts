@@ -166,12 +166,6 @@ export namespace ModelToTypeScript {
     if (Types.TypeGuard.IsVoid(schema)) return Void(schema)
     return 'unknown'
   }
-  export function GenerateType(model: TypeBoxModel, $id: string) {
-    reference_map.clear()
-    const type = model.types.find((type) => type.$id === $id)
-    if (type === undefined) return `export type ${$id} = unknown`
-    return `export type ${type.$id!} = ${Visit(type)}`
-  }
   const reference_map = new Map<string, Types.TSchema>()
   export function Generate(model: TypeBoxModel): string {
     reference_map.clear()
