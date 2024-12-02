@@ -305,12 +305,9 @@ export namespace TypeScriptToTypeBox {
   }
   function* EnumDeclaration(node: Ts.EnumDeclaration): IterableIterator<string> {
     useImports = true
-    const exports = IsExport(node) ? 'export ' : ''
-    const members = node.members.map((member) => member.getText()).join(', ')
     const enumName = node.name.getText()
     enumNames.add(enumName)
-    const enumType = `${exports}enum Enum${node.name.getText()} { ${members} }`
-    yield [enumType, ''].join('\n')
+    yield ''
   }
   function PropertiesFromTypeElementArray(members: Ts.NodeArray<Ts.TypeElement>): string {
     const properties = members.filter((member) => !Ts.isIndexSignatureDeclaration(member))
@@ -399,7 +396,7 @@ export namespace TypeScriptToTypeBox {
     const rightText = node.right.getText()
     if (enumNames.has(leftText)) {
       // If the left part is an enum, generate Type.Literal(EnumXXX.YYY)
-      yield `Type.Literal(Enum${leftText}.${rightText})`
+      yield `Type.Literal(${leftText}.${rightText})`
     } else {
       const left = Collect(node.left)
       yield `${left}.${rightText}`
@@ -455,7 +452,7 @@ export namespace TypeScriptToTypeBox {
       const right = node.typeName.right.getText();
 
       if (enumNames.has(left)) {
-        yield `Type.Literal(Enum${left}.${right})`;
+        yield `Type.Literal(${left}.${right})`;
         return;
       } else {
         const leftCollected = Collect(node.typeName.left);
@@ -496,7 +493,7 @@ export namespace TypeScriptToTypeBox {
     if (name === 'Uncapitalize') return yield `Type.Uncapitalize${args}`;
 
     if (enumNames.has(name)) {
-      yield `Type.Enum(Enum${name})`;
+      yield `Type.Enum(${name})`;
       return;
     }
 
@@ -608,7 +605,7 @@ export namespace TypeScriptToTypeBox {
   }
   function ImportStatement(): string {
     if (!(useImports && useTypeBoxImport)) return ''
-    const set = new Set<string>(['Type'])
+    const set = new Set<string>(['Type as t', 'TLiteral'])
     if (useGenerics) {
       set.add('TSchema')
     }
@@ -619,7 +616,9 @@ export namespace TypeScriptToTypeBox {
       set.add('CloneType')
     }
     const imports = [...set].join(', ')
-    return `import { ${imports} } from '@sinclair/typebox'`
+    const enumImports = [...enumNames].join(', ')
+    return `import { ${imports} } from '@sinclair/typebox'` + '\n' +
+      `import { ${enumImports} } from '~core/database'`
   }
   /** Generates TypeBox types from TypeScript interface and type definitions */
   export function Generate(typescriptCode: string, options?: TypeScriptToTypeBoxOptions) {
